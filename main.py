@@ -4,16 +4,26 @@ import requests
 import os
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="*", allow_headers=["Content-Type"], methods=["GET", "POST", "OPTIONS"])
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
+@app.after_request
+def after_request(response):
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type")
+    response.headers.add("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    return response
 
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
 
-@app.route("/gerar-imagem", methods=["POST"])
+@app.route("/gerar-imagem", methods=["POST", "OPTIONS"])
 def gerar_imagem():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+
     if not GEMINI_API_KEY:
         return jsonify({"error": "GEMINI_API_KEY não configurada"}), 500
 
@@ -59,8 +69,11 @@ def gerar_imagem():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/gerar-prompts", methods=["POST"])
+@app.route("/gerar-prompts", methods=["POST", "OPTIONS"])
 def gerar_prompts():
+    if request.method == "OPTIONS":
+        return jsonify({"ok": True})
+
     if not GEMINI_API_KEY:
         return jsonify({"error": "GEMINI_API_KEY não configurada"}), 500
 
