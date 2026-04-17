@@ -19,13 +19,20 @@ def gerar_imagem():
 
     data = request.json
     prompt = data.get("prompt", "")
+    ref_base64 = data.get("refBase64", "")
+    ref_mime = data.get("refMime", "image/jpeg")
+
     if not prompt:
         return jsonify({"error": "Prompt vazio"}), 400
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
+    parts = []
+    if ref_base64:
+        parts.append({"inlineData": {"mimeType": ref_mime, "data": ref_base64}})
+    parts.append({"text": prompt})
 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
     payload = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"responseModalities": ["image", "text"]}
     }
 
@@ -33,21 +40,22 @@ def gerar_imagem():
         resp = requests.post(url, json=payload, timeout=60)
         resp.raise_for_status()
         result = resp.json()
-
         candidates = result.get("candidates", [])
         if not candidates:
             return jsonify({"error": "Nenhuma imagem gerada"}), 500
-
-        parts = candidates[0].get("content", {}).get("parts", [])
-        for part in parts:
+        for part in candidates[0].get("content", {}).get("parts", []):
             if "inlineData" in part:
                 return jsonify({
                     "mimeType": part["inlineData"]["mimeType"],
                     "data": part["inlineData"]["data"]
                 })
-
-        return jsonify({"error": "Sem imagem na resposta"}), 500
-
+        return jsonify({"error": "Sem imagem na resposta do Gemini"}), 500
+    except requests.exceptions.HTTPError as e:
+        try:
+            err_detail = e.response.json()
+        except:
+            err_detail = str(e)
+        return jsonify({"error": str(err_detail)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -63,28 +71,33 @@ def gerar_prompts():
 
     system = """Você é um Especialista em Geração de Prompts de Imagens Premium para Mercado Livre Brasil.
 Analise o produto e gere exatamente 7 prompts técnicos executáveis por IA de imagem.
-REGRAS: Nunca inventar dados. Nunca repetir entre imagens. Sempre PT-BR. Responda APENAS com os prompts no formato abaixo.
+
+REGRAS:
+- Nunca inventar dados técnicos não presentes na descrição
+- Nunca repetir informações entre imagens
+- Sempre em português PT-BR
+- Responda APENAS com os 7 prompts no formato exato abaixo, sem explicações extras
 
 IMAGEM 1
-[prompt capa branca: fundo #FFFFFF, produto 85%, sem textos, sem ícones, 1200x1200]
+[prompt: fundo branco puro #FFFFFF, produto central 85% do frame, iluminação uniforme, sombra suave, realismo alto, sem textos, sem ícones, estilo clean premium e-commerce, 1200x1200]
 
 IMAGEM 1B
-[prompt capa ambientada: ambiente coerente, fundo desfocado, sem textos, 1200x1200]
+[prompt: ambiente coerente com produto e público-alvo, fundo desfocado bokeh, produto destacado em primeiro plano, estética profissional, poucos elementos, sem textos, sem ícones, 1200x1200]
 
 IMAGEM 2
-[prompt benefícios: fundo claro, texto curto, ícones 3D realistas com produto em ação, 1200x1200]
+[prompt: fundo claro compatível com a cor do produto, texto curto e técnico destacando benefícios, ícones 3D realistas mostrando o produto em miniatura realizando cada benefício, proibido ícone flat/genérico, 1200x1200]
 
 IMAGEM 3
-[prompt tecnologia: fundo claro, como funciona, diagramas, ícones 3D com produto, 1200x1200]
+[prompt: fundo claro compatível, explica como o produto funciona, pode usar setas e diagramas, ícones 3D realistas com o produto em ação, 1200x1200]
 
 IMAGEM 4
-[prompt uso/aplicação: ações reais, fundo claro, ícones 3D com produto em ação, 1200x1200]
+[prompt: fundo claro compatível, mostra ações reais do dia a dia com o produto, texto curto e direto, ícones 3D realistas com o produto em ação, 1200x1200]
 
 IMAGEM 5
-[prompt técnico: cards/blocos, só dados reais do produto, ícones 3D, 1200x1200]
+[prompt: fundo claro compatível, layout técnico em cards/blocos limpos, apenas dados presentes na descrição, ícones 3D com o produto, 1200x1200]
 
 IMAGEM 6
-[prompt uso realista: pessoa usando, idade coerente, ambiente compatível, 1200x1200]"""
+[prompt: pessoa usando o produto, idade coerente com o público-alvo, ambiente compatível, 1200x1200]"""
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {
@@ -97,6 +110,12 @@ IMAGEM 6
         result = resp.json()
         text = result["candidates"][0]["content"]["parts"][0]["text"]
         return jsonify({"prompts": text})
+    except requests.exceptions.HTTPError as e:
+        try:
+            err_detail = e.response.json()
+        except:
+            err_detail = str(e)
+        return jsonify({"error": str(err_detail)}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
