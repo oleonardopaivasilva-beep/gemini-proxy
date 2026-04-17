@@ -244,22 +244,31 @@ def gerar_imagem():
             "personGeneration": "allow_adult"
         }
     }
-    try:
-        resp = requests.post(url, json=payload, timeout=90)
-        resp.raise_for_status()
-        result = resp.json()
-        predictions = result.get("predictions", [])
-        if not predictions:
-            return jsonify({"error": "Nenhuma imagem gerada", "raw": str(result)[:300]}), 500
-        if "bytesBase64Encoded" in predictions[0]:
-            return jsonify({"mimeType": predictions[0].get("mimeType", "image/png"), "data": predictions[0]["bytesBase64Encoded"]})
-        return jsonify({"error": "Sem imagem na resposta", "raw": str(predictions[0])[:300]}), 500
-    except requests.exceptions.HTTPError as e:
-        try: err_detail = e.response.json()
-        except: err_detail = str(e)
-        return jsonify({"error": str(err_detail)}), 500
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    import time
+    last_error = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(url, json=payload, timeout=90)
+            resp.raise_for_status()
+            result = resp.json()
+            predictions = result.get("predictions", [])
+            if not predictions:
+                return jsonify({"error": "Nenhuma imagem gerada", "raw": str(result)[:300]}), 500
+            if "bytesBase64Encoded" in predictions[0]:
+                return jsonify({"mimeType": predictions[0].get("mimeType", "image/png"), "data": predictions[0]["bytesBase64Encoded"]})
+            return jsonify({"error": "Sem imagem na resposta", "raw": str(predictions[0])[:300]}), 500
+        except requests.exceptions.HTTPError as e:
+            try: err_detail = e.response.json()
+            except: err_detail = str(e)
+            last_error = err_detail
+            status_code = e.response.status_code if e.response else 0
+            if status_code == 503:
+                time.sleep(8 * (attempt + 1))
+                continue
+            return jsonify({"error": str(err_detail)}), 500
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    return jsonify({"error": str(last_error)}), 503
 
 @app.route("/gerar-prompts", methods=["POST", "OPTIONS"])
 def gerar_prompts():
