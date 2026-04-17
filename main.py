@@ -327,7 +327,7 @@ IMAGEM 5
 IMAGEM 6
 [pessoa usando o produto, idade coerente com publico-alvo, ambiente compativel, 1200x1200]"""
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"role": "user", "parts": [{"text": system + "\n\nPRODUTO:\n" + produto}]}]}
     try:
         resp = requests.post(url, json=payload, timeout=60)
