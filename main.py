@@ -233,42 +233,63 @@ def gerar_imagem():
     if not prompt:
         return jsonify({"error": "Prompt vazio"}), 400
 
-    # Imagen 4 Fast via predict
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={GEMINI_API_KEY}"
-    payload = {
-        "instances": [{"prompt": prompt}],
-        "parameters": {
-            "sampleCount": 1,
-            "aspectRatio": "1:1",
-            "safetyFilterLevel": "block_few",
-            "personGeneration": "allow_adult"
-        }
-    }
     import time
+    # Tenta gemini-2.0-flash-exp-image-generation primeiro, depois Imagen 4 Fast como fallback
+    models = [
+        {
+            "url": f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}",
+            "type": "gemini"
+        },
+        {
+            "url": f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={GEMINI_API_KEY}",
+            "type": "imagen"
+        }
+    ]
     last_error = None
-    for attempt in range(3):
-        try:
-            resp = requests.post(url, json=payload, timeout=90)
-            resp.raise_for_status()
-            result = resp.json()
-            predictions = result.get("predictions", [])
-            if not predictions:
-                return jsonify({"error": "Nenhuma imagem gerada", "raw": str(result)[:300]}), 500
-            if "bytesBase64Encoded" in predictions[0]:
-                return jsonify({"mimeType": predictions[0].get("mimeType", "image/png"), "data": predictions[0]["bytesBase64Encoded"]})
-            return jsonify({"error": "Sem imagem na resposta", "raw": str(predictions[0])[:300]}), 500
-        except requests.exceptions.HTTPError as e:
-            try: err_detail = e.response.json()
-            except: err_detail = str(e)
-            last_error = err_detail
-            status_code = e.response.status_code if e.response else 0
-            if status_code == 503:
-                time.sleep(8 * (attempt + 1))
-                continue
-            return jsonify({"error": str(err_detail)}), 500
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-    return jsonify({"error": str(last_error)}), 503
+    for model in models:
+        for attempt in range(3):
+            try:
+                if model["type"] == "gemini":
+                    parts = []
+                    if ref_base64:
+                        parts.append({"inlineData": {"mimeType": ref_mime, "data": ref_base64}})
+                    parts.append({"text": prompt})
+                    payload = {
+                        "contents": [{"role": "user", "parts": parts}],
+                        "generationConfig": {"responseModalities": ["image", "text"]}
+                    }
+                else:
+                    payload = {
+                        "instances": [{"prompt": prompt}],
+                        "parameters": {"sampleCount": 1, "aspectRatio": "1:1", "personGeneration": "allow_adult"}
+                    }
+                resp = requests.post(model["url"], json=payload, timeout=90)
+                resp.raise_for_status()
+                result = resp.json()
+                if model["type"] == "gemini":
+                    for part in result.get("candidates", [{}])[0].get("content", {}).get("parts", []):
+                        if "inlineData" in part:
+                            return jsonify({"mimeType": part["inlineData"]["mimeType"], "data": part["inlineData"]["data"]})
+                    last_error = "Sem imagem gemini: " + str(result)[:200]
+                    break
+                else:
+                    predictions = result.get("predictions", [])
+                    if predictions and "bytesBase64Encoded" in predictions[0]:
+                        return jsonify({"mimeType": predictions[0].get("mimeType", "image/png"), "data": predictions[0]["bytesBase64Encoded"]})
+                    last_error = "Sem imagem imagen: " + str(result)[:200]
+                    break
+            except requests.exceptions.HTTPError as e:
+                try: err_detail = e.response.json()
+                except: err_detail = str(e)
+                last_error = err_detail
+                if e.response is not None and e.response.status_code == 503:
+                    time.sleep(5 * (attempt + 1))
+                    continue
+                break
+            except Exception as e:
+                last_error = str(e)
+                break
+    return jsonify({"error": str(last_error)}), 500
 
 @app.route("/gerar-prompts", methods=["POST", "OPTIONS"])
 def gerar_prompts():
