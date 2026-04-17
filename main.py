@@ -263,7 +263,7 @@ def gerar_imagem():
     if ref_base64:
         parts.append({"inlineData": {"mimeType": ref_mime, "data": ref_base64}})
     parts.append({"text": prompt})
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"responseModalities": ["image", "text"]}}
     try:
         resp = requests.post(url, json=payload, timeout=60)
