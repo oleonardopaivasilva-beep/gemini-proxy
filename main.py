@@ -2,13 +2,14 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+import json
 
 app = Flask(__name__)
 CORS(app, origins="*", allow_headers=["Content-Type"], methods=["GET", "POST", "OPTIONS"])
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
-HTML_PAGE = """<!DOCTYPE html>
+HTML_PAGE = open("/dev/stdin").read() if False else """<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
@@ -64,15 +65,15 @@ textarea:focus,input:focus{border-color:#1a1a1a;background:#fff}
 </style>
 </head>
 <body>
-<div class="top"><h1>Gerador de imagens — Mercado Livre</h1><p>Cole o produto + foto → receba 7 imagens prontas via Gemini</p></div>
+<div class="top"><h1>Gerador ML Premium</h1><p>Cole o produto + foto de referencia e receba 7 imagens prontas</p></div>
 <div class="body">
   <div class="card">
     <div class="field">
-      <label>Produto — link do anúncio ou descrição completa</label>
-      <textarea id="produto" placeholder="Cole o link do Mercado Livre ou descreva o produto com todas as especificações..."></textarea>
+      <label>Produto - link do anuncio ou descricao completa</label>
+      <textarea id="produto" placeholder="Cole o link do Mercado Livre ou descreva o produto com todas as especificacoes..."></textarea>
     </div>
     <div class="field">
-      <label>Foto de referência do produto</label>
+      <label>Foto de referencia do produto</label>
       <div class="upload" id="uploadArea">
         <input type="file" accept="image/*" onchange="handleFile(event)"/>
         <p id="uploadLabel">Toque aqui para selecionar a foto</p>
@@ -83,7 +84,6 @@ textarea:focus,input:focus{border-color:#1a1a1a;background:#fff}
     <div class="progress" id="prog"><div class="progress-fill" id="progFill" style="width:0%"></div></div>
     <p class="status" id="status"></p>
   </div>
-
   <div id="resultArea" style="display:none">
     <div class="tabs">
       <button class="tab active" id="tab-p" onclick="switchTab('p')">Prompts</button>
@@ -98,27 +98,10 @@ textarea:focus,input:focus{border-color:#1a1a1a;background:#fff}
     </div>
   </div>
 </div>
-
 <script>
-const LABELS=['Imagem 1 — Capa branca','Imagem 1B — Capa ambientada','Imagem 2 — Benefícios','Imagem 3 — Tecnologia','Imagem 4 — Uso / aplicação','Imagem 5 — Técnica','Imagem 6 — Uso realista'];
+const LABELS=['Imagem 1 - Capa branca','Imagem 1B - Capa ambientada','Imagem 2 - Beneficios','Imagem 3 - Tecnologia','Imagem 4 - Uso','Imagem 5 - Tecnica','Imagem 6 - Uso realista'];
 const KEYS=['IMAGEM 1','IMAGEM 1B','IMAGEM 2','IMAGEM 3','IMAGEM 4','IMAGEM 5','IMAGEM 6'];
-let prompts=[];
-let refB64='',refMime='';
-
-const COMANDO=`ASSUMA ESTE COMANDO (PADRÃO PERMANENTE)
-
-PAPEL: Você é um especialista em geração de imagens de produto para Mercado Livre BR. Interprete o prompt enviado e gere a foto correspondente, usando SEMPRE a imagem de referência anexada para manter exatamente o mesmo produto (cor, formato, textura, conectores e proporções).
-
-REGRAS:
-1. Gerar imagem no formato pedido (1200x1200), nitidez alta, visual premium.
-2. NÃO inventar características. Se não estiver no prompt ou referência, não adicionar.
-3. Não trocar cor, modelo, textura, proporções ou acabamento do produto.
-4. Fundo, iluminação, cenário e ângulo devem seguir o prompt com máxima fidelidade.
-5. Quando pedir sem textos/ícones, não inserir nenhum.
-6. Textos devem ser curtos e exatamente como solicitado.
-7. Layout clean premium, tipografia moderna, sem repetição entre imagens.
-8. Ícones 3D realistas (volume, luz, sombra suave), PROIBIDO flat/minimalista. Ícones mostram o produto em uso.
-9. Produto sempre como protagonista com sombras realistas.`;
+let prompts=[],refB64='',refMime='image/jpeg';
 
 function handleFile(e){
   const f=e.target.files[0];if(!f)return;
@@ -131,34 +114,26 @@ function handleFile(e){
     const p=document.getElementById('preview');p.src=res;p.style.display='block';
   };r.readAsDataURL(f);
 }
-
 function switchTab(t){
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.pane').forEach(x=>x.classList.remove('active'));
   document.getElementById('tab-'+t).classList.add('active');
   document.getElementById('pane-'+t).classList.add('active');
 }
-
-function setSt(msg,err){
-  const el=document.getElementById('status');
-  el.className='status'+(err?' err':'');el.innerHTML=msg;
-}
-function setProg(pct){
-  document.getElementById('prog').style.display='block';
-  document.getElementById('progFill').style.width=pct+'%';
-}
+function setSt(msg,err){const el=document.getElementById('status');el.className='status'+(err?' err':'');el.innerHTML=msg;}
+function setProg(pct){document.getElementById('prog').style.display='block';document.getElementById('progFill').style.width=pct+'%';}
 
 async function iniciar(){
   const produto=document.getElementById('produto').value.trim();
   if(!produto){setSt('Descreva o produto antes de continuar.',true);return;}
-  if(!refB64){setSt('Adicione a foto de referência.',true);return;}
+  if(!refB64){setSt('Adicione a foto de referencia.',true);return;}
   const btn=document.getElementById('btnGerar');
   btn.disabled=true;
   document.getElementById('resultArea').style.display='none';
   setProg(5);setSt('<span class="spin"></span>Gerando prompts...');
   try{
     const res=await fetch('/gerar-prompts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({produto})});
-    if(!res.ok)throw new Error('Erro HTTP '+res.status);
+    if(!res.ok){const t=await res.text();throw new Error('HTTP '+res.status+': '+t);}
     const data=await res.json();
     if(data.error)throw new Error(data.error);
     prompts=parsePrompts(data.prompts);
@@ -173,7 +148,7 @@ function parsePrompts(text){
   const map={};let cur=null;
   text.split('\\n').forEach(line=>{
     const t=line.trim();
-    const found=['IMAGEM 1B','IMAGEM 1','IMAGEM 2','IMAGEM 3','IMAGEM 4','IMAGEM 5','IMAGEM 6'].find(k=>t===k||t===k+':'||t.startsWith(k+' —')||t.startsWith(k+' -'));
+    const found=['IMAGEM 1B','IMAGEM 1','IMAGEM 2','IMAGEM 3','IMAGEM 4','IMAGEM 5','IMAGEM 6'].find(k=>t===k||t===k+':'||t.startsWith(k+' -')||t.startsWith(k+' \u2014'));
     if(found){cur=found;map[found]='';}
     else if(cur&&t)map[cur]+=(map[cur]?'\\n':'')+t;
   });
@@ -184,11 +159,10 @@ function renderPrompts(){
   const list=document.getElementById('promptsList');list.innerHTML='';
   KEYS.forEach((k,i)=>{
     const d=document.createElement('div');d.className='prompt-block';
-    d.innerHTML='<div class="prompt-head"><span>'+LABELS[i]+'</span><button class="copy-btn" onclick="copiar('+i+',this)">Copiar</button></div><div class="prompt-text" id="pt-'+i+'">'+( prompts[i]||'(não gerado)')+'</div>';
+    d.innerHTML='<div class="prompt-head"><span>'+LABELS[i]+'</span><button class="copy-btn" onclick="copiar('+i+',this)">Copiar</button></div><div class="prompt-text" id="pt-'+i+'">'+(prompts[i]||'(nao gerado)')+'</div>';
     list.appendChild(d);
   });
 }
-
 function renderGrid(){
   const g=document.getElementById('grid');g.innerHTML='';
   LABELS.forEach((l,i)=>{
@@ -206,21 +180,20 @@ async function gerarImagens(){
     const card=document.getElementById('ic-'+i);
     const ph=card.querySelector('.placeholder');if(ph)ph.textContent='Gerando...';
     try{
-      const res=await fetch('/gerar-imagem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:COMANDO+'\\n\\nPROMPT:\\n'+prompts[i],refBase64:refB64,refMime})});
-      if(!res.ok)throw new Error('Erro HTTP '+res.status);
+      const res=await fetch('/gerar-imagem',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:prompts[i],refBase64:refB64,refMime:refMime})});
+      if(!res.ok){const t=await res.text();throw new Error('HTTP '+res.status+': '+t.substring(0,100));}
       const data=await res.json();
-      if(data.error)throw new Error(data.error);
+      if(data.error)throw new Error(JSON.stringify(data.error).substring(0,120));
       const src='data:'+data.mimeType+';base64,'+data.data;
       card.innerHTML='<img src="'+src+'" alt="'+LABELS[i]+'"/><div class="ic-label">'+LABELS[i]+'</div><a href="'+src+'" download="ml_'+(i+1)+'.png" class="dl">Baixar</a>';
     }catch(e){
-      card.innerHTML='<div class="err-box">Erro: '+e.message+'</div><div class="ic-label">'+LABELS[i]+'</div>';
+      card.innerHTML='<div class="err-box">'+e.message+'</div><div class="ic-label">'+LABELS[i]+'</div>';
     }
-    await new Promise(r=>setTimeout(r,1500));
+    await new Promise(r=>setTimeout(r,2000));
   }
   setProg(100);setSt('Todas as imagens geradas!');
   btn.disabled=false;switchTab('i');
 }
-
 function copiar(i,btn){
   navigator.clipboard.writeText(document.getElementById('pt-'+i).textContent).then(()=>{btn.textContent='Copiado!';setTimeout(()=>btn.textContent='Copiar',2000);});
 }
@@ -252,30 +225,59 @@ def gerar_imagem():
     if request.method == "OPTIONS":
         return jsonify({"ok": True})
     if not GEMINI_API_KEY:
-        return jsonify({"error": "GEMINI_API_KEY não configurada"}), 500
+        return jsonify({"error": "GEMINI_API_KEY nao configurada"}), 500
     data = request.json
     prompt = data.get("prompt", "")
     ref_base64 = data.get("refBase64", "")
     ref_mime = data.get("refMime", "image/jpeg")
     if not prompt:
         return jsonify({"error": "Prompt vazio"}), 400
-    parts = []
+
+    # Usar Imagen 4 Fast com endpoint predict
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={GEMINI_API_KEY}"
+    
+    payload = {
+        "instances": [{"prompt": prompt}],
+        "parameters": {"sampleCount": 1}
+    }
+
+    # Se tiver imagem de referencia, usar gemini-2.0-flash-exp-image-generation
     if ref_base64:
-        parts.append({"inlineData": {"mimeType": ref_mime, "data": ref_base64}})
-    parts.append({"text": prompt})
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"role": "user", "parts": parts}], "generationConfig": {"responseModalities": ["image", "text"]}}
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
+        payload = {
+            "contents": [{"role": "user", "parts": [
+                {"inlineData": {"mimeType": ref_mime, "data": ref_base64}},
+                {"text": prompt}
+            ]}],
+            "generationConfig": {"responseModalities": ["image", "text"]}
+        }
+        try:
+            resp = requests.post(url, json=payload, timeout=60)
+            resp.raise_for_status()
+            result = resp.json()
+            for part in result.get("candidates", [{}])[0].get("content", {}).get("parts", []):
+                if "inlineData" in part:
+                    return jsonify({"mimeType": part["inlineData"]["mimeType"], "data": part["inlineData"]["data"]})
+            return jsonify({"error": "Sem imagem na resposta", "raw": str(result)[:300]}), 500
+        except requests.exceptions.HTTPError as e:
+            try: err_detail = e.response.json()
+            except: err_detail = str(e)
+            # Fallback para Imagen 4 Fast sem referencia
+            pass
+        except Exception as e:
+            pass
+
+    # Imagen 4 Fast (sem referencia ou fallback)
     try:
-        resp = requests.post(url, json=payload, timeout=60)
-        resp.raise_for_status()
-        result = resp.json()
-        candidates = result.get("candidates", [])
-        if not candidates:
-            return jsonify({"error": "Nenhuma imagem gerada"}), 500
-        for part in candidates[0].get("content", {}).get("parts", []):
-            if "inlineData" in part:
-                return jsonify({"mimeType": part["inlineData"]["mimeType"], "data": part["inlineData"]["data"]})
-        return jsonify({"error": "Sem imagem na resposta do Gemini"}), 500
+        url2 = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={GEMINI_API_KEY}"
+        payload2 = {"instances": [{"prompt": prompt}], "parameters": {"sampleCount": 1}}
+        resp2 = requests.post(url2, json=payload2, timeout=60)
+        resp2.raise_for_status()
+        result2 = resp2.json()
+        predictions = result2.get("predictions", [])
+        if predictions and "bytesBase64Encoded" in predictions[0]:
+            return jsonify({"mimeType": "image/png", "data": predictions[0]["bytesBase64Encoded"]})
+        return jsonify({"error": "Sem imagem", "raw": str(result2)[:300]}), 500
     except requests.exceptions.HTTPError as e:
         try: err_detail = e.response.json()
         except: err_detail = str(e)
@@ -288,36 +290,38 @@ def gerar_prompts():
     if request.method == "OPTIONS":
         return jsonify({"ok": True})
     if not GEMINI_API_KEY:
-        return jsonify({"error": "GEMINI_API_KEY não configurada"}), 500
+        return jsonify({"error": "GEMINI_API_KEY nao configurada"}), 500
     data = request.json
     produto = data.get("produto", "")
     if not produto:
         return jsonify({"error": "Produto vazio"}), 400
-    system = """Você é um Especialista em Geração de Prompts de Imagens Premium para Mercado Livre Brasil.
-Analise o produto e gere exatamente 7 prompts técnicos executáveis por IA de imagem.
-REGRAS: Nunca inventar dados. Nunca repetir entre imagens. Sempre PT-BR. Responda APENAS com os 7 prompts no formato abaixo.
+
+    system = """Voce e um Especialista em Geracao de Prompts de Imagens Premium para Mercado Livre Brasil.
+Analise o produto e gere exatamente 7 prompts tecnicos executaveis por IA de imagem.
+REGRAS: Nunca inventar dados. Nunca repetir entre imagens. Sempre PT-BR. Responda APENAS com os 7 prompts no formato abaixo, sem explicacoes.
 
 IMAGEM 1
-[fundo branco puro #FFFFFF, produto central 85% do frame, iluminação uniforme, sombra suave, realismo alto, sem textos, sem ícones, estilo clean premium e-commerce, 1200x1200]
+[fundo branco puro #FFFFFF, produto central 85% do frame, iluminacao uniforme, sombra suave, realismo alto, sem textos, sem icones, estilo clean premium e-commerce, 1200x1200]
 
 IMAGEM 1B
-[ambiente coerente com produto e público-alvo, fundo desfocado bokeh, produto destacado em primeiro plano, sem textos, sem ícones, 1200x1200]
+[ambiente coerente com produto e publico-alvo, fundo desfocado bokeh, produto destacado em primeiro plano, sem textos, sem icones, 1200x1200]
 
 IMAGEM 2
-[fundo claro compatível com a cor do produto, texto curto técnico de benefícios, ícones 3D realistas mostrando o produto em miniatura realizando cada benefício, proibido ícone flat, 1200x1200]
+[fundo claro compativel com a cor do produto, texto curto tecnico de beneficios, icones 3D realistas mostrando o produto em miniatura realizando cada beneficio, proibido icone flat, 1200x1200]
 
 IMAGEM 3
-[fundo claro compatível, explica como funciona e aplicação, setas e diagramas, ícones 3D com produto em ação, 1200x1200]
+[fundo claro compativel, explica como funciona e aplicacao, setas e diagramas, icones 3D com produto em acao, 1200x1200]
 
 IMAGEM 4
-[fundo claro compatível, ações reais do dia a dia com o produto, texto curto, ícones 3D com produto em ação, 1200x1200]
+[fundo claro compativel, acoes reais do dia a dia com o produto, texto curto, icones 3D com produto em acao, 1200x1200]
 
 IMAGEM 5
-[fundo claro compatível, layout técnico em cards/blocos, apenas dados reais da descrição, ícones 3D com produto, 1200x1200]
+[fundo claro compativel, layout tecnico em cards/blocos, apenas dados reais da descricao, icones 3D com produto, 1200x1200]
 
 IMAGEM 6
-[pessoa usando o produto, idade coerente com público-alvo, ambiente compatível, 1200x1200]"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+[pessoa usando o produto, idade coerente com publico-alvo, ambiente compativel, 1200x1200]"""
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"role": "user", "parts": [{"text": system + "\n\nPRODUTO:\n" + produto}]}]}
     try:
         resp = requests.post(url, json=payload, timeout=60)
