@@ -233,51 +233,27 @@ def gerar_imagem():
     if not prompt:
         return jsonify({"error": "Prompt vazio"}), 400
 
-    # Usar Imagen 4 Fast com endpoint predict
+    # Imagen 4 Fast via predict
     url = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={GEMINI_API_KEY}"
-    
     payload = {
         "instances": [{"prompt": prompt}],
-        "parameters": {"sampleCount": 1}
-    }
-
-    # Se tiver imagem de referencia, usar gemini-2.0-flash-exp-image-generation
-    if ref_base64:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key={GEMINI_API_KEY}"
-        payload = {
-            "contents": [{"role": "user", "parts": [
-                {"inlineData": {"mimeType": ref_mime, "data": ref_base64}},
-                {"text": prompt}
-            ]}],
-            "generationConfig": {"responseModalities": ["image", "text"]}
+        "parameters": {
+            "sampleCount": 1,
+            "aspectRatio": "1:1",
+            "safetyFilterLevel": "block_few",
+            "personGeneration": "allow_adult"
         }
-        try:
-            resp = requests.post(url, json=payload, timeout=60)
-            resp.raise_for_status()
-            result = resp.json()
-            for part in result.get("candidates", [{}])[0].get("content", {}).get("parts", []):
-                if "inlineData" in part:
-                    return jsonify({"mimeType": part["inlineData"]["mimeType"], "data": part["inlineData"]["data"]})
-            return jsonify({"error": "Sem imagem na resposta", "raw": str(result)[:300]}), 500
-        except requests.exceptions.HTTPError as e:
-            try: err_detail = e.response.json()
-            except: err_detail = str(e)
-            # Fallback para Imagen 4 Fast sem referencia
-            pass
-        except Exception as e:
-            pass
-
-    # Imagen 4 Fast (sem referencia ou fallback)
+    }
     try:
-        url2 = f"https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-fast-generate-001:predict?key={GEMINI_API_KEY}"
-        payload2 = {"instances": [{"prompt": prompt}], "parameters": {"sampleCount": 1}}
-        resp2 = requests.post(url2, json=payload2, timeout=60)
-        resp2.raise_for_status()
-        result2 = resp2.json()
-        predictions = result2.get("predictions", [])
-        if predictions and "bytesBase64Encoded" in predictions[0]:
-            return jsonify({"mimeType": "image/png", "data": predictions[0]["bytesBase64Encoded"]})
-        return jsonify({"error": "Sem imagem", "raw": str(result2)[:300]}), 500
+        resp = requests.post(url, json=payload, timeout=90)
+        resp.raise_for_status()
+        result = resp.json()
+        predictions = result.get("predictions", [])
+        if not predictions:
+            return jsonify({"error": "Nenhuma imagem gerada", "raw": str(result)[:300]}), 500
+        if "bytesBase64Encoded" in predictions[0]:
+            return jsonify({"mimeType": predictions[0].get("mimeType", "image/png"), "data": predictions[0]["bytesBase64Encoded"]})
+        return jsonify({"error": "Sem imagem na resposta", "raw": str(predictions[0])[:300]}), 500
     except requests.exceptions.HTTPError as e:
         try: err_detail = e.response.json()
         except: err_detail = str(e)
